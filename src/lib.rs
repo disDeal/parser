@@ -80,3 +80,14 @@ fn identifier_parser() {
         identifier("!not at all an identifier")
     );
 }
+
+#[test]
+fn pair_combinator() {
+    let tag_opener = pair(match_literal("<"), identifier);
+    assert_eq!(
+        Ok(("/>", ((), "my-first-element".to_string()))),
+        tag_opener("<my-first-element/>")
+    );
+    assert_eq!(Err("oops"), tag_opener("oops"));
+    assert_eq!(Err("!oops"), tag_opener("<!oops"));
+}
