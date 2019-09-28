@@ -1,9 +1,9 @@
-#![type_length_limit = "1137931"]
+#![type_length_limit = "1137933"]
 
 #[derive(PartialEq, Eq, Clone, Debug)]
 struct Element {
     name: String,
-    attribute: Vec<(String, String)>,
+    attributes: Vec<(String, String)>,
     children: Vec<Element>,
 }
 
@@ -31,6 +31,27 @@ where
 {
     fn parse(&self, input: &'a str) -> ParseResult<'a, Output> {
         self(input)
+    }
+}
+
+struct BoxedParser<'a, Output> {
+    parser: Box<dyn Parser<'a, Output> + 'a>,
+}
+
+impl<'a, Output> BoxedParser<'a, Output> {
+    fn new<P>(parser: P) -> Self
+    where
+        P: Parser<'a, Output> + 'a,
+    {
+        BoxedParser {
+            parser: Box::new(parser),
+        }
+    }
+}
+
+impl<'a, Output> Parser<'a, Output> for BoxedParser<'a, Output> {
+    fn parse(&self, input: &'a str) -> ParseResult<'a, Output> {
+        self.parser.parse(input)
     }
 }
 
@@ -193,6 +214,21 @@ fn attributes<'a>() -> impl Parser<'a, Vec<(String, String)>> {
     zero_or_more(right(space1(), attribute_pair()))
 }
 
+fn element_start<'a>() -> impl Parser<'a, (String, Vec<(String, String)>)> {
+    right(match_literal("<"), pair(identifier, attributes()))
+}
+
+fn single_element<'a>() -> impl Parser<'a, Element> {
+    map(
+        left(element_start(), match_literal("/>")),
+        |(name, attributes)| Element {
+            name,
+            attributes,
+            children: vec![],
+        },
+    )
+}
+
 #[test]
 fn literal_parser() {
     let parse_joe = match_literal("Hello Joe!");
@@ -284,5 +320,20 @@ fn attribute_parser() {
             ]
         )),
         attributes().parse(" one=\"1\" two=\"2\"")
+    );
+}
+
+#[test]
+fn single_element_parser() {
+    assert_eq!(
+        Ok((
+            "",
+            Element {
+                name: "div".to_string(),
+                attributes: vec![("class".to_string(), "float".to_string())],
+                children: vec![]
+            }
+        )),
+        single_element().parse("<div class=\"float\"/>")
     );
 }
