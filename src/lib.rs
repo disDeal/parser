@@ -28,7 +28,7 @@ fn identifier(input: &str) -> Result<(&str, String), &str> {
         _ => return Err(input),
     }
 
-    while let Some(next) = chars.next() {
+    for next in chars {
         if next.is_alphanumeric() || next == '-' {
             matched.push(next);
         } else {
