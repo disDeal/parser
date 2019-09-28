@@ -1,7 +1,7 @@
 #![type_length_limit = "1137933"]
 
 #[derive(PartialEq, Eq, Clone, Debug)]
-struct Element {
+pub struct Element {
     name: String,
     attributes: Vec<(String, String)>,
     children: Vec<Element>,
@@ -21,7 +21,7 @@ where
 
 type ParseResult<'a, Output> = Result<(&'a str, Output), &'a str>;
 
-trait Parser<'a, Output> {
+pub trait Parser<'a, Output> {
     fn parse(&self, input: &'a str) -> ParseResult<'a, Output>;
 
     fn map<F, NewOutput>(self, map_fn: F) -> BoxedParser<'a, NewOutput>
@@ -76,7 +76,7 @@ where
     }
 }
 
-struct BoxedParser<'a, Output> {
+pub struct BoxedParser<'a, Output> {
     parser: Box<dyn Parser<'a, Output> + 'a>,
 }
 
@@ -94,13 +94,6 @@ impl<'a, Output> BoxedParser<'a, Output> {
 impl<'a, Output> Parser<'a, Output> for BoxedParser<'a, Output> {
     fn parse(&self, input: &'a str) -> ParseResult<'a, Output> {
         self.parser.parse(input)
-    }
-}
-
-fn the_letter_a(input: &str) -> Result<(&str, ()), &str> {
-    match input.chars().next() {
-        Some('a') => Ok((&input['a'.len_utf8()..], ())),
-        _ => Err(input),
     }
 }
 
@@ -285,13 +278,30 @@ where
     }
 }
 
-fn element<'a>() -> impl Parser<'a, Element> {
-    either(single_element(), open_element())
+pub fn element<'a>() -> impl Parser<'a, Element> {
+    whitespace_wrap(either(single_element(), parent_element()))
 }
 
 fn close_element<'a>(expected_name: String) -> impl Parser<'a, String> {
     right(match_literal("</"), left(identifier, match_literal(">")))
         .pred(move |name| name == &expected_name)
+}
+
+fn parent_element<'a>() -> impl Parser<'a, Element> {
+    open_element().and_then(|el| {
+        left(zero_or_more(element()), close_element(el.name.clone())).map(move |children| {
+            let mut el = el.clone();
+            el.children = children;
+            el
+        })
+    })
+}
+
+fn whitespace_wrap<'a, P, A>(parser: P) -> impl Parser<'a, A>
+where
+    P: Parser<'a, A>,
+{
+    right(space0(), left(parser, space0()))
 }
 
 #[test]
@@ -401,4 +411,45 @@ fn single_element_parser() {
         )),
         single_element().parse("<div class=\"float\"/>")
     );
+}
+
+#[test]
+fn xml_parser() {
+    let doc = r#"
+        <top label="Top">
+            <semi-bottom label="Bottom"/>
+            <middle>
+                <bottom label="Another bottom"/>
+            </middle>
+        </top>"#;
+    let parsed_doc = Element {
+        name: "top".to_string(),
+        attributes: vec![("label".to_string(), "Top".to_string())],
+        children: vec![
+            Element {
+                name: "semi-bottom".to_string(),
+                attributes: vec![("label".to_string(), "Bottom".to_string())],
+                children: vec![],
+            },
+            Element {
+                name: "middle".to_string(),
+                attributes: vec![],
+                children: vec![Element {
+                    name: "bottom".to_string(),
+                    attributes: vec![("label".to_string(), "Another bottom".to_string())],
+                    children: vec![],
+                }],
+            },
+        ],
+    };
+    assert_eq!(Ok(("", parsed_doc)), element().parse(doc));
+}
+
+#[test]
+fn mismatched_closing_tag() {
+    let doc = r#"
+        <top>
+            <bottom/>
+        </middle>"#;
+    assert_eq!(Err("</middle>"), element().parse(doc));
 }
