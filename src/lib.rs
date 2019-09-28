@@ -54,12 +54,16 @@ where
     }
 }
 
-fn map<P, F, A, B>(parser: P, map_fn: F) -> impl Fn(&str) -> Result<(&str, B), &str>
+fn map<'a, P, F, A, B>(parser: P, map_fn: F) -> impl Parser<'a, B>
 where
-    P: Fn(&str) -> Result<(&str, A), &str>,
+    P: Parser<'a, A>,
     F: Fn(A) -> B,
 {
-    move |input| parser(input).map(|(next_input, result)| (next_input, map_fn(result)))
+    move |input| {
+        parser
+            .parse(input)
+            .map(|(next_input, result)| (next_input, map_fn(result)))
+    }
 }
 
 type ParseResult<'a, Output> = Result<(&'a str, Output), &'a str>;
